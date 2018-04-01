@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+from __future__ import print_function
+
 class Unbuffered(object):
     def __init__(self, stream):
         self.stream = stream
@@ -61,6 +64,7 @@ class CPLELearningModel(BaseEstimator):
         predict will be called with a substantial number of data points
         
     use_sample_weighting : boolean, optional (default=True)
+        soft label - value in (0, 1) possibility, hard label - an int value
         Whether to use sample weights (soft labels) for the unlabeled instances.
         Setting this to False allows the use of base classifiers which do not
         support sample weights (but might slow down the optimization)
@@ -75,24 +79,25 @@ class CPLELearningModel(BaseEstimator):
     """
     
     def __init__(self, basemodel, pessimistic=True, predict_from_probabilities = False, use_sample_weighting = True, max_iter=3000, verbose = 1):
-        self.model = basemodel
-        self.pessimistic = pessimistic
-        self.predict_from_probabilities = predict_from_probabilities
-        self.use_sample_weighting = use_sample_weighting
-        self.max_iter = max_iter
-        self.verbose = verbose
+        self.model = basemodel          # base model from sklearn
+        self.pessimistic = pessimistic  # pessimistic ensure the safety
+        self.predict_from_probabilities = predict_from_probabilities    # predict from probabilities
+        self.use_sample_weighting = use_sample_weighting    # True, get soft label from the base model
+        self.max_iter = max_iter        # the max iteration value
+        self.verbose = verbose          # enable the verbose output
         
-        self.it = 0 # iteration counter
+        self.it = 0 # the iteration counter
         self.noimprovementsince = 0 # log likelihood hasn't improved since this number of iterations
-        self.maxnoimprovementsince = 3 # threshold for iterations without improvements (convergence is assumed when this is reached)
+        # threshold for iterations without improvements (convergence is assumed when this is reached)
+        self.maxnoimprovementsince = 3 
         
-        self.buffersize = 200
+        self.buffersize = 200       # size of buffer to check for the convergence
         # buffer for the last few discriminative likelihoods (used to check for convergence)
         self.lastdls = [0]*self.buffersize
         
         # best discriminative likelihood and corresponding soft labels; updated during training
-        self.bestdl = numpy.infty
-        self.bestlbls = []
+        self.bestdl = numpy.infty       # a value in float type
+        self.bestlbls = []              # store the best dicriminative likelihood and corresponding soft labels
         
         # unique id
         self.id = str(unichr(numpy.random.randint(26)+97))+str(unichr(numpy.random.randint(26)+97))
@@ -116,8 +121,8 @@ class CPLELearningModel(BaseEstimator):
         try:
             # labeled discriminative log likelihood
             labeledDL = -sklearn.metrics.log_loss(labeledy, P)
-        except Exception, e:
-            print e
+        except Exception as e:
+            print (e)
             P = model.predict_proba(labeledData)
 
         # probability of unlabeled data
@@ -128,8 +133,8 @@ class CPLELearningModel(BaseEstimator):
             eps = 1e-15
             unlabeledP = numpy.clip(unlabeledP, eps, 1 - eps)
             unlabeledDL = numpy.average((unlabeledWeights*numpy.vstack((1-unlabeledy, unlabeledy)).T*numpy.log(unlabeledP)).sum(axis=1))
-        except Exception, e:
-            print e
+        except Exception as e:
+            print (e)
             unlabeledP = model.predict_proba(unlabeledData)
         
         if self.pessimistic:
@@ -167,7 +172,7 @@ class CPLELearningModel(BaseEstimator):
                 self.noimprovementsince = 0
             
             if self.verbose == 2:
-                print self.id,self.it, dl, numpy.mean(self.lastdls), improvement, round(prob, 3), (prob < 0.1)
+                print (self.id,self.it, dl, numpy.mean(self.lastdls), improvement, round(prob, 3), (prob < 0.1))
             elif self.verbose:
                 sys.stdout.write(('.' if self.pessimistic else '.') if not noimprovement else 'n')
                       
@@ -178,34 +183,50 @@ class CPLELearningModel(BaseEstimator):
         return dl
     
     def fit(self, X, y): # -1 for unlabeled
-        unlabeledX = X[y==-1, :]
-        labeledX = X[y!=-1, :]
-        labeledy = y[y!=-1]
+        unlabeledX = X[y==-1, :]            # the train_data of unlabeled
+        labeledX = X[y!=-1, :]              # train_data of labeled
+        labeledy = y[y!=-1]                 # the true label of labeled
         
-        M = unlabeledX.shape[0]
+        # the dimensionality of the problem
+        M = unlabeledX.shape[0]             # get the number of the labeled samples
         
         # train on labeled data
-        self.model.fit(labeledX, labeledy)
+        self.model.fit(labeledX, labeledy)  # train the base model 
 
-        unlabeledy = self.predict(unlabeledX)
+        # predict the unlabeled samples
+        # if the predict_from_probabilities is True, the value is the probabilities of each sample
+        unlabeledy = self.predict(unlabeledX)   
         
-        #re-train, labeling unlabeled instances pessimistically
+        # re-train, labeling unlabeled instances pessimistically
         
         # pessimistic soft labels ('weights') q for unlabelled points, q=P(k=0|Xu)
-        f = lambda softlabels, grad=[]: self.discriminative_likelihood_objective(self.model, labeledX, labeledy=labeledy, unlabeledData=unlabeledX, unlabeledWeights=numpy.vstack((softlabels, 1-softlabels)).T, gradient=grad) #- supLL
+        # lambda, create an anonymous function
+        f = lambda softlabels, grad=[]: \
+                self.discriminative_likelihood_objective(
+                                self.model,             # the base model
+                                labeledX,               # the train_data of label samples
+                                labeledy=labeledy,      # label of the labeled data
+                                unlabeledData=unlabeledX,   # the data of unlabeled samples
+                                unlabeledWeights=numpy.vstack((softlabels, 1-softlabels)).T,    # unlabeled weight, soft label
+                                gradient=grad           # a list gradient
+                                ) #- supLL
         lblinit = numpy.random.random(len(unlabeledy))
 
         try:
-            self.it = 0
+            self.it = 0                                         # the iteration counter
+            # the nlopt optimization toolkits
+            # GN_DIRECT_L_RAND: the NLopt Algorithms
+            # M: the number of optimization parameters, the number of the unlabeledX.shape[0]
             opt = nlopt.opt(nlopt.GN_DIRECT_L_RAND, M)
-            opt.set_lower_bounds(numpy.zeros(M))
-            opt.set_upper_bounds(numpy.ones(M))
-            opt.set_min_objective(f)
-            opt.set_maxeval(self.max_iter)
-            self.bestsoftlbl = opt.optimize(lblinit)
-            print " max_iter exceeded."
-        except Exception, e:
-            print e
+            # the bound constraints
+            opt.set_lower_bounds(numpy.zeros(M))        # set the lower bounds
+            opt.set_upper_bounds(numpy.ones(M))         # set the upper bounds
+            opt.set_min_objective(f)                    # set the objective function
+            opt.set_maxeval(self.max_iter)              # the max times of the optimization
+            self.bestsoftlbl = opt.optimize(lblinit)    # perform the optimization
+            print (" max_iter exceeded.")
+        except Exception as e:
+            print (e)
             self.bestsoftlbl = self.bestlbls
             
         if numpy.any(self.bestsoftlbl != self.bestlbls):
@@ -223,8 +244,8 @@ class CPLELearningModel(BaseEstimator):
             self.model.fit(numpy.vstack((labeledX, unlabeledX)), labels)
         
         if self.verbose > 1:
-            print "number of non-one soft labels: ", numpy.sum(self.bestsoftlbl != 1), ", balance:", numpy.sum(self.bestsoftlbl<0.5), " / ", len(self.bestsoftlbl)
-            print "current likelihood: ", ll
+            print ("number of non-one soft labels: ", numpy.sum(self.bestsoftlbl != 1), ", balance:", numpy.sum(self.bestsoftlbl<0.5), " / ", len(self.bestsoftlbl))
+            print ("current likelihood: ", ll)
         
         if not getattr(self.model, "predict_proba", None):
             # Platt scaling
