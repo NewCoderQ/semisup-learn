@@ -56,10 +56,10 @@ ssmodel = CPLELearningModel(basemodel)
 ssmodel.fit(X, ys)
 print "CPLE semi-supervised log.reg. score", ssmodel.score(X, ytrue)
 
-# # semi-supervised score, WQDA model
-# ssmodel = CPLELearningModel(WQDA(), predict_from_probabilities=True) # weighted Quadratic Discriminant Analysis
-# ssmodel.fit(X, ys)
-# print "CPLE semi-supervised WQDA score", ssmodel.score(X, ytrue)
+# semi-supervised score, WQDA model
+ssmodel = CPLELearningModel(WQDA(), predict_from_probabilities=True) # weighted Quadratic Discriminant Analysis
+ssmodel.fit(X, ys)
+print "CPLE semi-supervised WQDA score", ssmodel.score(X, ytrue)
 
 # # semi-supervised score, RBF SVM model
 # ssmodel = CPLELearningModel(sklearn.svm.SVC(kernel="rbf", probability=True), predict_from_probabilities=True) # RBF SVM
