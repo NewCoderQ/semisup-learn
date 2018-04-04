@@ -18,6 +18,7 @@ from frameworks.SelfLearning import SelfLearningModel
 # load data
 # fetch_mldata
 # cancer = fetch_mldata("Lung cancer (Ontario)")        # load data
+
 cancer = fetch_mldata("heart")        # load data
 
 X = cancer.target.T     # label (270, )
@@ -34,8 +35,9 @@ random_labeled_points = random.sample(list(np.where(ytrue == 0)[0]), int(labeled
                         random.sample(list(np.where(ytrue == 1)[0]), int(labeled_N/2))
 
 # set the labels of the labeled samples
-ys[random_labeled_points] = ytrue[random_labeled_points]
-2
+ys[random_labeled_points] = ytrue[random_labeled_points]        # 2
+
+
 # print(X[random_labeled_points])
 # supervised score 
 # basemodel = WQDA() # weighted Quadratic Discriminant Analysis

@@ -89,7 +89,8 @@ class CPLELearningModel(BaseEstimator):
         self.it = 0 # the iteration counter
         self.noimprovementsince = 0 # log likelihood hasn't improved since this number of iterations
         # threshold for iterations without improvements (convergence is assumed when this is reached)
-        self.maxnoimprovementsince = 3 
+        # self.maxnoimprovementsince = 3 
+        self.maxnoimprovementsince = 5
         
         self.buffersize = 200       # size of buffer to check for the convergence
         # buffer for the last few discriminative likelihoods (used to check for convergence)
@@ -101,7 +102,7 @@ class CPLELearningModel(BaseEstimator):
         
         # unique id
         # generate the unique id, convert the int value (97, 125) to char
-        self.id = str(unichr(numpy.random.randint(26)+97))+str(unichr(numpy.random.randint(26)+97))
+        self.id = str(chr(numpy.random.randint(26)+97))+str(chr(numpy.random.randint(26)+97))
 
     def discriminative_likelihood(self, model, labeledData, labeledy = None, unlabeledData = None, \
                                         unlabeledWeights = None, unlabeledlambda = 1, gradient=[], alpha = 0.01):
@@ -127,10 +128,18 @@ class CPLELearningModel(BaseEstimator):
         weights = numpy.hstack((numpy.ones(len(labeledy)), uweights))
         # the labels of all the instances(labeled and unlabeled)
         labels = numpy.hstack((labeledy, unlabeledy))
+        # print("shape of labels is {}".format(labels.shape))
+        # print("shape of unlabeledy is {}".format(unlabeledy.shape))
+        # print("shape of unlabeledWeights is {}".format(unlabeledWeights.shape))
         
         # fit model on supervised data
         if self.use_sample_weighting:       # True: use the sample_weight during fitting model
+
+
             model.fit(numpy.vstack((labeledData, unlabeledData)), labels, sample_weight=weights)
+
+
+
         else:
             model.fit(numpy.vstack((labeledData, unlabeledData)), labels)
         
@@ -202,13 +211,13 @@ class CPLELearningModel(BaseEstimator):
         # calculate the difference between the self.lastdls 
         if numpy.mod(self.it, self.buffersize) == 0: # or True:
             # calculate the improvement
-            improvement = numpy.mean((self.lastdls[(len(self.lastdls)/2):])) - numpy.mean((self.lastdls[:(len(self.lastdls)/2)]))
+            improvement = numpy.mean((self.lastdls[int(len(self.lastdls)/2):])) - numpy.mean((self.lastdls[:int(len(self.lastdls)/2)]))
             # ttest - test for hypothesis that the likelihoods have not changed (i.e. there has been no improvement, and we are close to convergence) 
-            _, prob = scipy.stats.ttest_ind(self.lastdls[(len(self.lastdls)/2):], self.lastdls[:(len(self.lastdls)/2)])
+            _, prob = scipy.stats.ttest_ind(self.lastdls[int(len(self.lastdls)/2):], self.lastdls[:int(len(self.lastdls)/2)])
             
             # if improvement is not certain accoring to t-test...
             # if no improvement, close to convergence
-            noimprovement = prob > 0.1 and numpy.mean(self.lastdls[(len(self.lastdls)/2):]) < numpy.mean(self.lastdls[:(len(self.lastdls)/2)])
+            noimprovement = prob > 0.1 and numpy.mean(self.lastdls[int(len(self.lastdls)/2):]) < numpy.mean(self.lastdls[:int(len(self.lastdls)/2)])
             if noimprovement:
                 self.noimprovementsince += 1
                 if self.noimprovementsince >= self.maxnoimprovementsince:       # if reach the maxnoimprovementsince
@@ -230,19 +239,20 @@ class CPLELearningModel(BaseEstimator):
         return dl           # the value 
     
     def fit(self, X, y): # -1 for unlabeled
-        unlabeledX = X[y==-1, :]            # the train_data of unlabeled
-        labeledX = X[y!=-1, :]              # train_data of labeled
-        labeledy = y[y!=-1]                 # the true label of labeled
+        unlabeledX = X[y==-1, :]            # the train_data of unlabeled (7451, 122)
+        labeledX = X[y!=-1, :]              # train_data of labeled (400, 122)
+        labeledy = y[y!=-1]                 # the true label of labeled (400,)        
         
         # the dimensionality of the problem
-        M = unlabeledX.shape[0]             # get the number of the labeled samples
+        M = unlabeledX.shape[0]             # get the number of the labeled samples 7451
         
-        # train on labeled data
+        # base model training 
         self.model.fit(labeledX, labeledy)  # train the base model 
 
         # predict the unlabeled samples
         # if the predict_from_probabilities is True, the value is the probabilities of each sample
-        unlabeledy = self.predict(unlabeledX)
+        unlabeledy = self.predict(unlabeledX)       # predict from the data feature
+
         
         # re-train, labeling unlabeled instances pessimistically
         
@@ -254,28 +264,49 @@ class CPLELearningModel(BaseEstimator):
                                 labeledX,               # the train_data of label samples
                                 labeledy=labeledy,      # label of the labeled data
                                 unlabeledData=unlabeledX,   # the data of unlabeled samples
-                                unlabeledWeights=numpy.vstack((softlabels, 1-softlabels)).T,    # unlabeled weight, soft label
+                                unlabeledWeights=numpy.vstack((softlabels, 1 - numpy.array(softlabels))).T,    # unlabeled weight, soft label
                                 gradient=grad           # a list gradient
                                 ) #- supLL
+
+        # the same length with the unlabeledy list, 7451
         lblinit = numpy.random.random(len(unlabeledy))      # init the optimization parameters
 
-        try:
-            self.it = 0                                         # the iteration counter
-            # the nlopt optimization toolkits
-            # GN_DIRECT_L_RAND: the NLopt Algorithms
-            # M: the number of optimization parameters, the number of the unlabeledX.shape[0]
-            opt = nlopt.opt(nlopt.GN_DIRECT_L_RAND, M)
-            # the bound constraints
-            opt.set_lower_bounds(numpy.zeros(M))        # set the lower bounds
-            opt.set_upper_bounds(numpy.ones(M))         # set the upper bounds
-            opt.set_min_objective(f)                    # set the objective function
-            opt.set_maxeval(self.max_iter)              # the max times of the optimization
-            self.bestsoftlbl = opt.optimize(lblinit)    # perform the optimization from the init parameters
-            print (" max_iter exceeded.")               # print function
-        except Exception as e:                          # deal with exception
-            print (e)
-            self.bestsoftlbl = self.bestlbls 
+
+        # try:
+        #     print("+++++++++++++++++++++++++")
+        #     self.it = 0                                         # the iteration counter
+        #     # the nlopt optimization toolkits
+        #     # GN_DIRECT_L_RAND: the NLopt Algorithms
+        #     # M: the number of optimization parameters, the number of the unlabeledX.shape[0]
+        #     opt = nlopt.opt(nlopt.GN_DIRECT_L_RAND, M)
+        #     # the bound constraints
+        #     opt.set_lower_bounds(numpy.zeros(M))        # set the lower bounds
+        #     opt.set_upper_bounds(numpy.ones(M))         # set the upper bounds
+        #     opt.set_min_objective(f)                    # set the objective function
+        #     opt.set_maxeval(self.max_iter)              # the max times of the optimization
+        #     self.bestsoftlbl = opt.optimize(lblinit)    # perform the optimization from the init parameters
+        #     print (" max_iter exceeded.")               # print function
+        # except Exception as e:                          # deal with exception
+        #     print("________________", e)
+        #     self.bestsoftlbl = self.bestlbls
             
+
+        print("+++++++++++++++++++++++++")
+        self.it = 0                                         # the iteration counter
+        # the nlopt optimization toolkits
+        # GN_DIRECT_L_RAND: the NLopt Algorithms
+        # M: the number of optimization parameters, the number of the unlabeledX.shape[0]
+        opt = nlopt.opt(nlopt.GN_DIRECT_L_RAND, M)
+        # the bound constraints
+        opt.set_lower_bounds(numpy.zeros(M))        # set the lower bounds
+        opt.set_upper_bounds(numpy.ones(M))         # set the upper bounds
+        opt.set_min_objective(f)                    # set the objective function
+        opt.set_maxeval(self.max_iter)              # the max times of the optimization
+        self.bestsoftlbl = opt.optimize(lblinit)    # perform the optimization from the init parameters
+        print (" max_iter exceeded.")               # print function
+
+
+
         if numpy.any(self.bestsoftlbl != self.bestlbls):        # any value statisfy is True
             self.bestsoftlbl = self.bestlbls            # copy
         ll = f(self.bestsoftlbl)
@@ -349,7 +380,7 @@ class CPLELearningModel(BaseEstimator):
         
         if self.predict_from_probabilities:
             P = self.predict_proba(X)
-            return (P[:, 0]<numpy.average(P[:, 0]))
+            return (P[:, 0] < numpy.average(P[:, 0]))
         else:
             return self.model.predict(X)
     
