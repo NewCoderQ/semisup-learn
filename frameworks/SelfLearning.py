@@ -54,13 +54,21 @@ class SelfLearningModel(BaseEstimator):
         -------
         self : returns an instance of self.
         """
+        # the unlabeled data
         unlabeledX = X[y==-1, :]        # X_unlabeled
+        # the labeled data
         labeledX = X[y!=-1, :]          # X_labeled
+        # the true label
         labeledy = y[y!=-1]             # y_labeled
         
+        # fit the base model
         self.model.fit(labeledX, labeledy)      # train the base model on the labeled data_X_y
+        # hard labels
         unlabeledy = self.predict(unlabeledX)   # predict the label of the unlabeled data on the trained model
+        # soft labels, shape = [n_sample, n_class], Returns the probability of the sample for each class in the model
         unlabeledprob = self.predict_proba(unlabeledX)  # get the probability of the unlabeled_X
+        print("unlabeledprob.shape: ", unlabeledprob.shape)
+        # print('in SelfLearningModel: ', unlabeledprob)
         unlabeledy_old = []             # a list to store the pred_label
         # re-train, labeling unlabeled instances with model predictions, until convergence
         i = 0
@@ -71,12 +79,18 @@ class SelfLearningModel(BaseEstimator):
                     2. unlabeledy 与 unlabeledy_old 中有不相同的元素
                 2. the iter number
         """
-        while (len(unlabeledy_old) == 0 or numpy.any(unlabeledy!=unlabeledy_old)) and i < self.max_iter:
+        while (len(unlabeledy_old) == 0 or numpy.any(unlabeledy != unlabeledy_old)) and i < self.max_iter:
             unlabeledy_old = numpy.copy(unlabeledy)         # copy the unlabeledy to unlabeledy_old
             # 此处的 0 和 1 跟分类的类别数有关系，此处为二分类
             # get the index of the high confidence samples
-            uidx = numpy.where((unlabeledprob[:, 0] > self.prob_threshold) | (unlabeledprob[:, 1] > self.prob_threshold))[0]
+            # label
+            # uidx = numpy.where((unlabeledprob[:, 0] > self.prob_threshold) | (unlabeledprob[:, 1] > self.prob_threshold) | \
+            #                    (unlabeledprob[:, 2] > self.prob_threshold) | (unlabeledprob[:, 3] > self.prob_threshold))[0]
             
+
+            uidx = numpy.where((unlabeledprob[:, 0] > self.prob_threshold) | (unlabeledprob[:, 1] > self.prob_threshold))[0]
+
+            # update the training dataset, and re-train the model
             # 将置信度较高的样本添加到训练集中，并且用来训练模型
             # vstack add in row
             # hstack add in column
@@ -111,8 +125,7 @@ class SelfLearningModel(BaseEstimator):
             Returns the probability of the sample for each class in
             the model. The columns correspond to the classes in sorted
             order, as they appear in the attribute `classes_`.
-        """
-        
+        """        
         if getattr(self.model, "predict_proba", None):      # Dose the attration exist?
             return self.model.predict_proba(X)              # exist
         else:

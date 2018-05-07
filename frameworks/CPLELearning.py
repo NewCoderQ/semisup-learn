@@ -119,13 +119,18 @@ class CPLELearningModel(BaseEstimator):
                 gradient: the gradient list
         """
         # set the first column value 1 where the original value less than 0.5
+        # print(unlabeledWeights, unlabeledWeights.shape)
+        # print(unlabeledWeights.shape)           # (7551, 2)
+
         unlabeledy = (unlabeledWeights[:, 0]<0.5)*1         # work as the label of the unlabeled instances
+        # print(unlabeledy.shape)         # (7551, )
         # the smaller, the more confident
         uweights = numpy.copy(unlabeledWeights[:, 0]) # large prob. for k=0 instances, small prob. for k=1 instances 
         # reflect the confidence
+        # calculate confidence of k = 1
         uweights[unlabeledy==1] = 1-uweights[unlabeledy==1] # subtract from 1 for k=1 instances to reflect confidence
         # the weights of all the instances(labeled and unlabeled)
-        weights = numpy.hstack((numpy.ones(len(labeledy)), uweights))
+        weights = numpy.hstack((numpy.ones(len(labeledy)), uweights))       # 7751
         # the labels of all the instances(labeled and unlabeled)
         labels = numpy.hstack((labeledy, unlabeledy))
         # print("shape of labels is {}".format(labels.shape))
@@ -134,12 +139,8 @@ class CPLELearningModel(BaseEstimator):
         
         # fit model on supervised data
         if self.use_sample_weighting:       # True: use the sample_weight during fitting model
-
-
+            # train model with weights
             model.fit(numpy.vstack((labeledData, unlabeledData)), labels, sample_weight=weights)
-
-
-
         else:
             model.fit(numpy.vstack((labeledData, unlabeledData)), labels)
         
@@ -150,9 +151,10 @@ class CPLELearningModel(BaseEstimator):
             # labeled
             # labeled discriminative log likelihood
             # calculate the log_loss, the cross-entropy
+            # the log-loss
             labeledDL = -sklearn.metrics.log_loss(labeledy, P) # log loss of the labeled instances
         except Exception as e:
-            print (e)
+            print(e)
             P = model.predict_proba(labeledData)        # return the model.predict_proba
 
         # unlabeled instances probability
@@ -195,13 +197,24 @@ class CPLELearningModel(BaseEstimator):
                 
                 gradient: the gradient list
         """
+        # print(unlabeledWeights)
+        # unlabeledWeights=numpy.vstack((unlabeledWeights, 1 - numpy.array(unlabeledWeights))).T,    # unlabeled weight, soft label
+        # print('+++++++++++++++++++++++++++++++++++++++')
+        # print(unlabeledWeights)
+        # exit()
+
         # iteration counter
-        if self.it == 0:
+        if self.it == 0:        # iteration counter
             # the last few discriminative likelihoods, for checking convergence
-            self.lastdls = [0]*self.buffersize
+            self.lastdls = [0]*self.buffersize          # 200
         
         # calculate the discriminative likelihoods
         # return the discriminative likelihoods
+
+        # print(self.it)
+        # print(unlabeledWeights)
+
+        # get the discriminative likelihoods
         dl = self.discriminative_likelihood(model, labeledData, labeledy, unlabeledData, unlabeledWeights, unlabeledlambda, gradient, alpha)
         
         self.it += 1
@@ -239,11 +252,15 @@ class CPLELearningModel(BaseEstimator):
         return dl           # the value 
     
     def fit(self, X, y): # -1 for unlabeled
+        # data split
+        # unlabeledX
         unlabeledX = X[y==-1, :]            # the train_data of unlabeled (7451, 122)
+        # labeledX
         labeledX = X[y!=-1, :]              # train_data of labeled (400, 122)
+        # labeledy
         labeledy = y[y!=-1]                 # the true label of labeled (400,)        
         
-        # the dimensionality of the problem
+        # the dimensionality of the problem, the number of the unlabeledX
         M = unlabeledX.shape[0]             # get the number of the labeled samples 7451
         
         # base model training 
@@ -255,7 +272,7 @@ class CPLELearningModel(BaseEstimator):
 
         
         # re-train, labeling unlabeled instances pessimistically
-        
+
         # pessimistic soft labels ('weights') q for unlabelled points, q=P(k=0|Xu)
         # lambda, create an anonymous function
         f = lambda softlabels, grad=[]: \
@@ -265,11 +282,14 @@ class CPLELearningModel(BaseEstimator):
                                 labeledy=labeledy,      # label of the labeled data
                                 unlabeledData=unlabeledX,   # the data of unlabeled samples
                                 unlabeledWeights=numpy.vstack((softlabels, 1 - numpy.array(softlabels))).T,    # unlabeled weight, soft label
-                                gradient=grad           # a list gradient
+                                # unlabeledWeights=softlabels, 
+                                # gradient=grad[:]           # a list gradient
                                 ) #- supLL
 
         # the same length with the unlabeledy list, 7451
+        # init the optimization parameters, (7551,)
         lblinit = numpy.random.random(len(unlabeledy))      # init the optimization parameters
+        print("lblinit:", lblinit)
 
 
         # try:
@@ -306,9 +326,9 @@ class CPLELearningModel(BaseEstimator):
         print (" max_iter exceeded.")               # print function
 
 
-
         if numpy.any(self.bestsoftlbl != self.bestlbls):        # any value statisfy is True
             self.bestsoftlbl = self.bestlbls            # copy
+        # print(self.bestsoftlbl)
         ll = f(self.bestsoftlbl)
 
         # return the label
@@ -380,6 +400,7 @@ class CPLELearningModel(BaseEstimator):
         
         if self.predict_from_probabilities:
             P = self.predict_proba(X)
+            # print('the shape of the P:', P.shape)
             return (P[:, 0] < numpy.average(P[:, 0]))
         else:
             return self.model.predict(X)

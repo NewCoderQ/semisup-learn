@@ -2,7 +2,7 @@
 # @Author: NewCoderQ
 # @Date:   2018-04-03 15:46:30
 # @Last Modified by:   NewCoderQ
-# @Last Modified time: 2018-04-03 20:24:49
+# @Last Modified time: 2018-04-17 10:55:52
 
 """
     Load data from the .pkl file
@@ -63,8 +63,11 @@ class Cataract_data():
         for name in labels.keys():      # each image name
             index = list(labels.keys()).index(name)
             self.data[index] = self.combine_feature(feature[name])
-            self.label[index] = labels[name] if labels[name] == 0 else 1
-            # self.label[index] = labels[name]
+            # two category
+            # self.label[index] = labels[name] if labels[name] == 0 else 1
+
+            # four category
+            self.label[index] = labels[name]
 
         print('{} instances, {} features in all'.format(self.data.shape[0], self.data.shape[1]))
         
